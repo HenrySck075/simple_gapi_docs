@@ -1,0 +1,7 @@
+mkdocs.yml
+
+docs/services/
+
+**/__pycache__/
+
+site/

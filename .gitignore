@@ -1,7 +1,4 @@
-mkdocs.yml
-
-docs/services/
+dosage/src/content/docs/services/
 
 **/__pycache__/
 
-site/

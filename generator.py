@@ -3,12 +3,9 @@ from __future__ import annotations
 import json
 import os
 import googleapiclient
-import yaml
 import json
 import textwrap
 
-from mkdocs import config
-from mkdocs.commands import build, serve
 
 # Construct the path to the bundled discovery documents
 discovery_doc_dir = os.path.join(googleapiclient.__path__[0], 'discovery_cache', 'documents')
@@ -23,7 +20,7 @@ def schema2json(schema, indent = 0):
             return "{\n" + textwrap.indent(inner, " " * (indent + 2)) + "\n" + (" " * indent) + "}"
         elif schema["type"] == "array":
             items = schema.get("items", {})
-            return "[\n" + textwrap.indent(schema2json(items, indent + 2), " " * (indent + 2)) + "\n" + (" " * (indent+2)) + "\n" + (" " * indent) + "]"
+            return "[\n" + textwrap.indent(schema2json(items, indent + 2), " " * (indent + 2)) + ",\n" + (" " * (indent+2)) + "...\n" + (" " * indent) + "]"
         else:
             return f'{schema["type"]}'
     elif "$ref" in schema:
@@ -90,7 +87,7 @@ class DiscoveryDocument:
             #if typ["$ref"] in self.resource_reps.values():
                 #rsc = [next(r for r,t in self.resource_reps.items() if t == typ["$ref"])]
                 rsc = typ["$ref"]
-                return f"an instance of [{rsc}](../../types/{rsc}.html)."
+                return f"an instance of [{rsc}](/simple_gapi_docs/services/{self.docname}/types/{rsc}.md)."
             #else:
                 #typ = self.schemas[typ["$ref"]]
 
@@ -108,6 +105,12 @@ class DiscoveryDocument:
                 ret += f"| `{name}` | {ftype} | {desc} |\n"
         return ret
 
+    # The whole type page
+    def document_type(self, name, typ):
+        desc = typ.get("desc", "*No description provided.*")
+        content = f"# Type: {name}\n{desc}\n\nJSON representation:\n"
+        content += self._document_type_shared(typ)
+        return content
 
 
 
@@ -115,6 +118,13 @@ class DiscoveryDocument:
         doc: DocgenResource = {}
         parent[self.name] = (self.docname, doc)
         self.generate_resource(doc, self.resources)
+
+        # Run through the entire schemas
+        tdoc: DocgenResource = {}
+        doc["types"] = ("types", tdoc)
+        for name, schema in self.schemas.items():
+            tdoc[name] = (f"{name}.md", self.document_type(name, schema))
+
     def generate_resource(self, doc, resources):
         for rname,rsc in resources.items():
             rdoc: DocgenResource = {}
@@ -145,40 +155,24 @@ def main():
     # Construct the docs/services directory based on output
     def write_docs(resource: DocgenResource, path: str):
         os.makedirs(path, exist_ok=True)
-        for (filename, content) in resource.values():
+        for name, (filename, content) in resource.items():
             if isinstance(content, str):
                 p = os.path.join(path, filename)
                 # create dir (recurse) beforehand
                 os.makedirs(os.path.dirname(p), exist_ok=True)
                 with open(p, "w") as f:
-                    f.write(content)
+                    f.write(
+f"""---
+title: {name}
+---
+"""
+                        +
+                        content
+                    )
             else:
                 write_docs(content, os.path.join(path, filename))
 
-    write_docs(output, "docs/services")
-
-    # Load the mkdocs_base.yml file and construct the nav object based on output
-    with open("mkdocs_base.yml") as f:
-        mkdocs = yaml.safe_load(f)
-    mkdocs["nav"] = [{"Home": "index.md"}, {"Services": []}]
-
-    def construct_nav(resource: DocgenResource, path: str):
-        nav = []
-        for (filename, content) in resource.values():
-            if isinstance(content, str):
-                nav.append({filename: os.path.join(path, filename)})
-            else:
-                nav.append({filename: construct_nav(content, os.path.join(path, filename))})
-        return nav
-
-    mkdocs["nav"][1]["Services"] = construct_nav(output, "services")
-
-    # save as mkdocs.yml
-    with open("mkdocs.yml", "w") as f:
-        yaml.dump(mkdocs, f)
-
-    cfg = config.load_config()
-    serve.serve()
+    write_docs(output, "dosage/src/content/docs/services")
 
 
 

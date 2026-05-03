@@ -30,13 +30,6 @@ def schema2json(schema, indent = 0):
     else:
         return 'unknown'
 
-
-@dataclass(kw_only=True)
-class DocgenPage:
-    contentHTML: str
-    description: str
-type DocgenResource = dict[str, tuple[str, DocgenResource | DocgenPage]]
-
 class DiscoveryDocument:
     def __init__(self, file) -> None:
         with open(file) as f:
@@ -47,6 +40,22 @@ class DiscoveryDocument:
             self.endpointBaseUrl = doc["baseUrl"]
             self.schemas: dict[str, dict] = doc["schemas"]
             self.resources = doc["resources"]
+
+    def write_page(self, path: str, name: str, content_html: str, description: str, shellHTML_template):
+        os.makedirs(path, exist_ok=True)
+        with open(os.path.join(path, "content.html"), "w") as f:
+            f.write(content_html)
+        with open(os.path.join(path, "index.html"), "w") as f:
+            f.write(shellHTML_template.substitute(
+                title=name,
+                desc=description,
+                content=content_html
+            ))
+        with open(os.path.join(path, "metadata.json"), "w") as f:
+            json.dump({
+                "title": name,
+                "desc": description
+            }, f, indent=2)
 
     def document_method(self, rname, mname, method) -> str:
         a = airium.Airium(source_minify=True)
@@ -96,23 +105,34 @@ class DiscoveryDocument:
     def dm_document_params(s,a,p):
         if not p:
             return "*No parameters.*\n\n"
-        table = "| Name | Type | Description |\n|-|-|-|\n"
-        for name, param in p.items():
-            type = param["type"]
-            desc = param.get("desc", "")
-            table += f"| `{name}` | `{type}` | {desc} |\n"
-        return table + "\n"
+        with a.table():
+            with a.tr():
+                a.th(_t="Name")
+                a.th(_t="Type")
+                a.th(_t="Description")
+            for name, param in p.items():
+                type = param["type"]
+                desc = param.get("description", "")
+                with a.tr():
+                    a.td().code(_t=name)
+                    a.td().code(_t=type)
+                    a.td(_t=desc)
 
     def dm_document_type(self, a, leading, typ):
         if "$ref" in typ:
             rsc = typ["$ref"]
             with a.p():
                 a(f"{leading}an instance of ")
-                a.a(href=f"/simple_gapi_docs/services/{self.docname}/types/{rsc}.md", _t=rsc)
+                a.a(href=f"/simple_gapi_docs/services/{self.docname}/{self.version}/types/{rsc}.md", _t=rsc)
             return
 
-        a.p(_t=f"an object of the following format:")
-        self._document_type_shared(a,typ)
+        if typ["type"] == "object":
+            a.p(_t=f"{leading}an object of the following format:")
+            self._document_type_shared(a,typ)
+        elif typ["type"] == "array":
+            self.dm_document_type(a, "an array of ", typ["items"])
+        else: 
+            a.p(_t=typ["type"])
 
     # assumes the passed in typ represents an object (which it is)
     def _document_type_shared(self, a, typ):
@@ -124,17 +144,14 @@ class DiscoveryDocument:
                 props = typ["properties"]
                 with a.tr():
                     a.th(_t="Field")
-                    for name in props.keys():
-                        a.th(_t=name)
-                with a.tr():
                     a.th(_t="Type")
-                    for field in props.values():
-                        ftype = self.dm_document_type(a, "", field)
-                        a.th(_t=ftype)
-                with a.tr():
                     a.th(_t="Description")
-                    for field in props.values():
-                        desc = field.get("desc", "")
+                for name,field in props.items():
+                    with a.tr():
+                        a.th(_t=name)
+                        with a.th():
+                            self.dm_document_type(a, "", field)
+                        desc = field.get("description", "")
                         a.th(_t=desc)
 
     # The whole type page
@@ -142,87 +159,54 @@ class DiscoveryDocument:
         a = airium.Airium(source_minify=True)
 
         desc = typ.get("description", "*No description provided.*")
-        a.h1(f"Type: {name}")
-        a.p(desc)
-        a.h2("JSON representation:")
+        a.h1(_t=f"Type: {name}")
+        a.p(_t=desc)
+        a.h2(_t="JSON representation:")
         self._document_type_shared(a,typ)
         return str(a)
 
-    def generate_docs(self, parent: DocgenResource):
-        doc: DocgenResource = {}
-        parent[self.name] = (self.docname, doc)
-        self.generate_resource(doc, self.resources)
-
-        # Run through the entire schemas
-        tdoc: DocgenResource = {}
-        doc["types"] = ("types", tdoc)
+    def generate_docs(self, shellHTML_template, base_path: str):
+        self._generate_resource(shellHTML_template, base_path, self.resources)
+        
+        # Write types
+        types_path = os.path.join(base_path, "types")
         for name, schema in self.schemas.items():
-            tdoc[name] = (
-                f"{name}", DocgenPage(
-                    contentHTML=self.document_type(name, schema),
-                    description = schema.get("description", "*No description provided.*")
-                )
-            )
+            type_path = os.path.join(types_path, name)
+            content_html = self.document_type(name, schema)
+            description = schema.get("description", "*No description provided.*")
+            self.write_page(type_path, name, content_html, description, shellHTML_template)
 
-    def generate_resource(self, doc, resources):
-        for rname,rsc in resources.items():
-            rdoc: DocgenResource = {}
-            doc[rname] = (rname,rdoc)
-            if "methods" in rsc: # im not sure why it wouldnt
-                for mname,method in rsc["methods"].items():
-                    rdoc[mname] = (
-                        f"method/{mname}", DocgenPage(
-                            contentHTML=self.document_method(rname, mname, method),
-                            description=method.get("description", "*No description provided.*")
-                        )
-                    )
+    def _generate_resource(self, shellHTML_template, base_path: str, resources):
+        for rname, rsc in resources.items():
+            resource_path = os.path.join(base_path, rname)
+            
+            if "methods" in rsc:
+                for mname, method in rsc["methods"].items():
+                    method_path = os.path.join(resource_path, f"method/{mname}")
+                    content_html = self.document_method(rname, mname, method)
+                    description = method.get("description", "*No description provided.*")
+                    self.write_page(method_path, mname, content_html, description, shellHTML_template)
+            
             if "resources" in rsc:
-                self.generate_resource(doc, rsc["resources"])
+                self._generate_resource(shellHTML_template, resource_path, rsc["resources"])
 
 
 def main():
     # for every json files in the discovery_cache documents directory
-    output = {}
+    with open(os.path.join("assets","shell.html")) as f:
+        shellHTML = Template(f.read())
+    
     for file in os.listdir(discovery_doc_dir):
         if file.endswith(".json") and file != "index.json":
             try:
                 doc = DiscoveryDocument(os.path.join(discovery_doc_dir, file))
                 print(f"Generating docs for {doc.name} ({doc.version}) from {file}...")
-                doc.generate_docs(output)
+                service_path = os.path.join("site/services", doc.docname, doc.version)
+                os.makedirs(service_path, exist_ok=True)
+                doc.generate_docs(shellHTML, service_path)
             except: 
                 print(f"While trying to parse {file}, an exception occurs:")
                 raise
-
-    # Construct the docs/services directory based on output
-    def write_docs(resource: DocgenResource, path: str):
-        os.makedirs(path, exist_ok=True)
-        with open(os.path.join("assets","shell.html")) as f:
-            shellHTML = Template(f.read())
-        for name, (filename, content) in resource.items():
-            if isinstance(content, DocgenPage):
-                p = os.path.join(path, filename)
-                # create dir (recurse) beforehand
-                os.makedirs(p, exist_ok=True)
-                with open(os.path.join(p, "content.html"), "w") as f:
-                    f.write(str(content))
-                with open(os.path.join(p, "index.html"), "w") as f:
-                    f.write(shellHTML.substitute(
-                        title = name,
-                        desc = content.description,
-                        content = content.contentHTML
-                    ))
-                with open(os.path.join(p, "metadata.json"), "w") as f:
-                    json.dump({
-                        "title": name,
-                        "desc": content.description
-                    }, f, indent=2)
-
-
-            else:
-                write_docs(content, os.path.join(path, filename))
-
-    write_docs(output, "site/services")
-
 
 
 if __name__ == "__main__":

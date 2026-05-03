@@ -1,0 +1,2 @@
+airium==0.2.7
+google-api-python-client>2.192.0

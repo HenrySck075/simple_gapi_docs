@@ -1,0 +1,97 @@
+<html>
+  <head>
+    <style>
+    
+/* The Container */
+.markdown-body {
+  font-family: 'Roboto', 'Segoe UI', Tahoma, sans-serif;
+  line-height: 1.6;
+  color: #202124;
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 32px;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+}
+
+/* Headings: Bold and colorful */
+.markdown-body h1, 
+.markdown-body h2, 
+.markdown-body h3 {
+  color: #1a73e8; /* Material Blue */
+  font-weight: 500;
+  margin-top: 24px;
+  margin-bottom: 16px;
+}
+
+.markdown-body h1 { font-size: 2.2rem; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+.markdown-body h2 { font-size: 1.8rem; }
+
+/* Code Blocks: The "Card" look */
+.markdown-body pre {
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid #dadce0;
+  font-family: 'Roboto Mono', monospace;
+}
+
+.markdown-body code {
+  background-color: #f1f3f4;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #d81b60; /* Material Pink for contrast */
+}
+
+/* Quotes: Subtle left accent */
+.markdown-body blockquote {
+  margin: 16px 0;
+  padding: 8px 24px;
+  border-left: 4px solid #1a73e8;
+  background-color: #f1f3f4;
+  color: #5f6368;
+}
+
+/* Tables: Clean and striped */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+}
+
+.markdown-body th {
+  background-color: #f8f9fa;
+  text-align: left;
+  font-weight: 500;
+  padding: 12px;
+  border-bottom: 2px solid #dadce0;
+}
+
+.markdown-body td {
+  padding: 12px;
+  border-bottom: 1px solid #e8eaed;
+}
+
+/* Buttons/Links */
+.markdown-body a {
+  color: #1a73e8;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+    </style>
+    <title>$title</title>
+    <meta name="description" content="$desc">
+  </head>
+  <body>
+    <div id="content" class="markdown-body">
+      $content
+    </div>
+  </body>
+</html>
